@@ -2,26 +2,39 @@ name: Property Scraper
 
 on:
   schedule:
-    # Every 4 hours
-    - cron: "0 */4 * * *"
-  workflow_dispatch:
+    # Run every 3 hours — 6 AM, 9 AM, 12 PM, 3 PM, 6 PM, 9 PM, 12 AM IST (UTC+5:30)
+    - cron: "30 0,3,6,9,12,15,18,21 * * *"
+  workflow_dispatch:   # allow manual trigger from the Actions tab
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python 3.10
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.11"
           cache: "pip"
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      - name: Validate secrets are present
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -z "$MONGO_URI" ] || [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "ERROR: One or more required secrets are not set in repository settings."
+            echo "  Required: MONGO_URI, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID"
+            exit 1
+          fi
 
       - name: Run scraper
         env:

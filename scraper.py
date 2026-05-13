@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import sys
 
-from config import validate_secrets
+from config import load_search_config, validate_secrets
 from db import is_new_listing, save_listing
 from notifier import send_alert
 from scrapers import ALL_SCRAPERS
@@ -24,9 +24,18 @@ logger = logging.getLogger("scraper")
 
 def main() -> None:
     validate_secrets()
+
+    cfg = load_search_config()
+    enabled = cfg.get("enabled_scrapers", ["olx"])
+    logger.info("Enabled scrapers: %s", enabled)
+
     total_new = 0
 
     for ScraperClass in ALL_SCRAPERS:
+        if ScraperClass.source not in enabled:
+            logger.info("Skipping scraper: %s (not enabled)", ScraperClass.source)
+            continue
+
         scraper = ScraperClass()
         logger.info("Running scraper: %s", scraper.source)
         matched = scraper.run()
