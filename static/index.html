@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Property Watcher</title>
+  <link rel="stylesheet" href="/style.css" />
+  <!-- Alpine.js CDN — tiny reactive framework, no build step -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="/app.js"></script>
+</head>
+<body x-data="propertyWatcher()" x-init="init()" @destroy="destroy()">
+
+  <!-- ── Header ─────────────────────────────────────────────────────── -->
+  <header>
+    <h1>Property Watcher</h1>
+    <div class="header-right">
+      <span class="last-run" x-show="lastRunAt">
+        Last run: <span x-text="formatTime(lastRunAt)"></span>
+        <span x-show="lastRunNewCount > 0">
+          · <span x-text="lastRunNewCount"></span> new
+        </span>
+      </span>
+      <button
+        class="btn-run"
+        :disabled="running"
+        @click="triggerRun()"
+      >
+        <span x-show="running"><span class="spinner"></span>Running…</span>
+        <span x-show="!running">▶ Run Now</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ── Tabs ───────────────────────────────────────────────────────── -->
+  <nav class="tabs">
+    <button :class="{ active: tab === 'listings' }"  @click="switchTab('listings')">Listings</button>
+    <button :class="{ active: tab === 'keywords' }"  @click="switchTab('keywords')">Keywords</button>
+    <button :class="{ active: tab === 'sources' }"   @click="switchTab('sources')">Sources</button>
+    <button :class="{ active: tab === 'history' }"   @click="switchTab('history')">Run History</button>
+  </nav>
+
+  <main>
+
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!-- LISTINGS TAB                                                  -->
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <div x-show="tab === 'listings'">
+      <div class="card">
+        <div style="display:flex; gap:.75rem; align-items:center; margin-bottom:.75rem; flex-wrap:wrap;">
+          <div class="card-title" style="margin:0">Filter by source:</div>
+          <select
+            style="padding:.35rem .6rem; border:1px solid #ddd; border-radius:6px; font-size:.875rem;"
+            x-model="listingsSource"
+            @change="listingsPage=1; fetchListings()"
+          >
+            <option value="">All portals</option>
+            <option value="olx">OLX</option>
+            <option value="magicbricks">MagicBricks</option>
+            <option value="99acres">99acres</option>
+          </select>
+          <span style="font-size:.8rem; color:#888;" x-text="`${listingsTotal} listing(s) found`"></span>
+        </div>
+
+        <div x-show="listingsLoading" class="empty">
+          <span class="spinner"></span> Loading…
+        </div>
+
+        <div x-show="!listingsLoading && listings.length === 0" class="empty">
+          No listings yet. Run the scraper to fetch matches.
+        </div>
+
+        <div x-show="!listingsLoading && listings.length > 0" class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Price</th>
+                <th>Location</th>
+                <th>Source</th>
+                <th>Found</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="l in listings" :key="l.property_id">
+                <tr>
+                  <td x-text="l.title"></td>
+                  <td class="price" x-text="formatPrice(l.price)"></td>
+                  <td style="color:#555;font-size:.85rem;" x-text="l.location || '—'"></td>
+                  <td><span class="source-badge" x-text="l.source"></span></td>
+                  <td x-text="formatTime(l.discovered_at)"></td>
+                  <td>
+                    <a class="listing-link" :href="l.url" target="_blank" rel="noopener">View →</a>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pagination" x-show="totalPages > 1">
+          <button @click="goPage(listingsPage - 1)" :disabled="listingsPage <= 1">‹</button>
+          <template x-for="p in totalPages" :key="p">
+            <button
+              :class="{ active: p === listingsPage }"
+              @click="goPage(p)"
+              x-text="p"
+            ></button>
+          </template>
+          <button @click="goPage(listingsPage + 1)" :disabled="listingsPage >= totalPages">›</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!-- KEYWORDS TAB                                                  -->
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <div x-show="tab === 'keywords'">
+      <div x-show="cfgLoading" class="empty"><span class="spinner"></span> Loading config…</div>
+
+      <div x-show="!cfgLoading" class="card">
+        <div class="card-title">Search filters</div>
+
+        <!-- Locations -->
+        <div class="kw-label">Locations</div>
+        <div class="tag-list">
+          <template x-for="(kw, i) in cfg.locations" :key="kw">
+            <span class="tag">
+              <span x-text="kw"></span>
+              <button @click="removeTag('locations', i)" title="Remove">✕</button>
+            </span>
+          </template>
+        </div>
+        <div class="add-row">
+          <input
+            type="text"
+            placeholder="e.g. Kowdiar"
+            x-model="newInputs.locations"
+            @keydown="handleTagEnter('locations', $event)"
+          />
+          <button class="btn-add" @click="addTag('locations')">Add</button>
+        </div>
+
+        <!-- Must keywords -->
+        <div class="kw-label">Must-match keywords <small style="font-weight:400;color:#999">(at least one must appear)</small></div>
+        <div class="tag-list">
+          <template x-for="(kw, i) in cfg.must_keywords" :key="kw">
+            <span class="tag">
+              <span x-text="kw"></span>
+              <button @click="removeTag('must_keywords', i)" title="Remove">✕</button>
+            </span>
+          </template>
+        </div>
+        <div class="add-row">
+          <input
+            type="text"
+            placeholder="e.g. ground floor"
+            x-model="newInputs.must_keywords"
+            @keydown="handleTagEnter('must_keywords', $event)"
+          />
+          <button class="btn-add" @click="addTag('must_keywords')">Add</button>
+        </div>
+
+        <!-- Reject keywords -->
+        <div class="kw-label">Reject keywords <small style="font-weight:400;color:#999">(listing dropped if any match)</small></div>
+        <div class="tag-list">
+          <template x-for="(kw, i) in cfg.reject_keywords" :key="kw">
+            <span class="tag" style="background:#fce4ec;color:#c62828;">
+              <span x-text="kw"></span>
+              <button @click="removeTag('reject_keywords', i)" title="Remove" style="color:#c62828;">✕</button>
+            </span>
+          </template>
+        </div>
+        <div class="add-row">
+          <input
+            type="text"
+            placeholder="e.g. furnished"
+            x-model="newInputs.reject_keywords"
+            @keydown="handleTagEnter('reject_keywords', $event)"
+          />
+          <button class="btn-add" @click="addTag('reject_keywords')">Add</button>
+        </div>
+
+        <!-- Property types -->
+        <div class="kw-label">Property types</div>
+        <div class="tag-list">
+          <template x-for="(kw, i) in cfg.property_types" :key="kw">
+            <span class="tag" style="background:#e8f5e9;color:#2e7d32;">
+              <span x-text="kw"></span>
+              <button @click="removeTag('property_types', i)" title="Remove" style="color:#2e7d32;">✕</button>
+            </span>
+          </template>
+        </div>
+        <div class="add-row">
+          <input
+            type="text"
+            placeholder="e.g. 3 bhk"
+            x-model="newInputs.property_types"
+            @keydown="handleTagEnter('property_types', $event)"
+          />
+          <button class="btn-add" @click="addTag('property_types')">Add</button>
+        </div>
+
+        <!-- Max price -->
+        <div class="price-row">
+          <label for="max-price">Max price (₹)</label>
+          <input
+            id="max-price"
+            type="number"
+            min="0"
+            step="100000"
+            x-model.number="cfg.max_price_inr"
+            placeholder="0 = no limit"
+          />
+          <span style="font-size:.8rem;color:#888;">
+            <span x-show="cfg.max_price_inr > 0">
+              ₹<span x-text="(cfg.max_price_inr/100000).toFixed(1)"></span> lakh
+            </span>
+            <span x-show="cfg.max_price_inr === 0">No limit</span>
+          </span>
+        </div>
+
+        <div style="display:flex;align-items:center;">
+          <button class="btn-save" @click="saveConfig()">Save changes</button>
+          <span class="save-msg" x-show="cfgSaved">✓ Saved</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!-- SOURCES TAB                                                   -->
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <div x-show="tab === 'sources'">
+      <div x-show="scrapersLoading" class="empty"><span class="spinner"></span> Loading…</div>
+
+      <div x-show="!scrapersLoading" class="card">
+        <div class="card-title">Enabled portals</div>
+        <table class="sources-table">
+          <thead>
+            <tr>
+              <th>Portal</th>
+              <th>Status</th>
+              <th>Enabled</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="s in scrapers" :key="s.name">
+              <tr>
+                <td style="font-weight:500; text-transform:capitalize;" x-text="s.name"></td>
+                <td>
+                  <span
+                    class="status-pill"
+                    :class="`status-${s.status}`"
+                    x-text="statusLabel(s.status)"
+                  ></span>
+                </td>
+                <td>
+                  <label class="toggle" :title="s.status !== 'active' ? 'Cannot enable: scraper is ' + statusLabel(s.status) : ''">
+                    <input type="checkbox" :checked="s.enabled" :disabled="s.status !== 'active'" @change="s.status === 'active' && toggleScraper(s)" />
+                    <span class="slider" :style="s.status !== 'active' ? 'opacity:0.4;cursor:not-allowed' : ''"></span>
+                  </label>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <p style="font-size:.8rem;color:#888;margin-top:.75rem;">
+          JS-only portals require Playwright. Blocked portals have WAF protection active.
+          See <a href="/docs" style="color:#1e3a5f;">API docs</a> for details.
+        </p>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!-- HISTORY TAB                                                   -->
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <div x-show="tab === 'history'">
+      <div class="card">
+        <div class="card-title">Recent runs (this session)</div>
+        <div x-show="history.length === 0" class="empty">
+          No runs recorded yet. Click "Run Now" to start.
+        </div>
+        <template x-for="(h, i) in history" :key="i">
+          <div class="history-row">
+            <span x-text="formatTime(h.at)"></span>
+            <span class="history-count" x-text="`${h.count} new listing(s)`"></span>
+            <span class="history-error" x-show="h.error" x-text="h.error"></span>
+          </div>
+        </template>
+      </div>
+    </div>
+
+  </main>
+</body>
+</html>
