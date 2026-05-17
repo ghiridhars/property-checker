@@ -10,10 +10,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v5.6.0
         with:
           python-version: "3.11"
           cache: "pip"
@@ -24,18 +24,16 @@ jobs:
       - name: Validate secrets are present
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          if [ -z "$MONGO_URI" ] || [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
-            echo "ERROR: One or more required secrets are not set in repository settings."
-            echo "  Required: MONGO_URI, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID"
+          if [ -z "$MONGO_URI" ]; then
+            echo "ERROR: MONGO_URI secret is not set in repository settings."
             exit 1
           fi
+          echo "MONGO_URI is set. Telegram is optional and will be skipped if not configured."
 
       - name: Run scraper
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}   # optional
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}       # optional
         run: python scraper.py

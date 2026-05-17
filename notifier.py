@@ -9,7 +9,7 @@ from typing import Any
 
 import requests
 
-from config import REQUEST_TIMEOUT, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+from config import REQUEST_TIMEOUT, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, telegram_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,10 @@ _TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
 
 
 def send_alert(listing: dict[str, Any]) -> None:
-    """Send a Telegram message for a matched listing."""
+    """Send a Telegram message for a matched listing. No-op if Telegram is not configured."""
+    if not telegram_enabled():
+        logger.debug("Telegram not configured — skipping alert for %s", listing.get("property_id"))
+        return
     price_display = listing.get("price", "N/A")
     message = (
         "New Property Match!\n\n"

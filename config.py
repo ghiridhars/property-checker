@@ -21,15 +21,11 @@ TELEGRAM_CHAT_ID: str = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 def validate_secrets() -> None:
     """Call this once at startup (in scraper.py) to fail fast if secrets are missing or still set to placeholder values."""
-    secrets = {
-        "MONGO_URI": MONGO_URI,
-        "TELEGRAM_BOT_TOKEN": TELEGRAM_BOT_TOKEN,
-        "TELEGRAM_CHAT_ID": TELEGRAM_CHAT_ID,
-    }
-    # Detect empty strings or obvious .env.example placeholders
+    # Only MONGO_URI is required; Telegram is optional.
+    required = {"MONGO_URI": MONGO_URI}
     _placeholder_markers = ("<", "xxxxx", "YOUR_", "123456789:")
     bad = [
-        k for k, v in secrets.items()
+        k for k, v in required.items()
         if not v or any(marker in v for marker in _placeholder_markers)
     ]
     if bad:
@@ -38,6 +34,17 @@ def validate_secrets() -> None:
             f"{', '.join(bad)}\n"
             f"Copy .env.example → .env and fill in real credentials."
         )
+
+
+def telegram_enabled() -> bool:
+    """Return True only if both Telegram secrets are configured."""
+    _placeholder_markers = ("<", "xxxxx", "YOUR_", "123456789:")
+    return bool(
+        TELEGRAM_BOT_TOKEN
+        and TELEGRAM_CHAT_ID
+        and not any(m in TELEGRAM_BOT_TOKEN for m in _placeholder_markers)
+        and not any(m in TELEGRAM_CHAT_ID for m in _placeholder_markers)
+    )
 
 # ---------------------------------------------------------------------------
 # Search configuration
